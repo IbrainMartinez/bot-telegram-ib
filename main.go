@@ -32,9 +32,8 @@ type Chat struct {
 
 // Estructura para el documento de MongoDB
 type MessageData struct {
-	Message string    `bson:"message"`
-	URL     string    `bson:"url"`
-	Date    time.Time `bson:"date"`
+	URL  string    `bson:"url"`
+	Date time.Time `bson:"date"`
 }
 
 var (
@@ -109,20 +108,13 @@ func handleTelegramWebhook(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Nuevo mensaje del chat %d: %s", update.Message.Chat.ID, update.Message.Text)
-
 	messageText := update.Message.Text
 	url := extractURL(messageText)
 
 	if url != "" {
-		// Elimina la URL del mensaje antes de guardar
-		cleanMessage := strings.Replace(messageText, url, "", 1)
-		cleanMessage = strings.TrimSpace(cleanMessage)
-
 		messageData := MessageData{
-			Message: cleanMessage,
-			URL:     url,
-			Date:    time.Now(),
+			URL:  url,
+			Date: time.Now(),
 		}
 
 		collection := mongoClient.Database("test").Collection("urls")
@@ -133,11 +125,11 @@ func handleTelegramWebhook(c *gin.Context) {
 			return
 		}
 		
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "¡Mensaje y enlace para modelo 3D recibidos y guardados con éxito!")
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "¡Enlace para modelo 3D recibido y guardado con éxito!")
 		bot.Send(msg)
 	} else {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Por favor, envía un enlace que comience con http:// o https:// para el modelo 3D.")
-		bot.Send(msg)
+		// No se encontró una URL, por lo que el bot no hace nada
+		// Puedes dejar esto vacío si no quieres que el bot responda
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
