@@ -1,100 +1,105 @@
 package main
 
 import (
-	"context"
-	"log"
-	"net/http"
-	"os"
-	"strings"
-	"time"
+    "context"
+    "log"
+    "net/http"
+    "os"
+    "strings"
+    "time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/joho/godotenv"
-	// "go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+    "github.com/gin-gonic/gin"
+    tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+    "github.com/joho/godotenv"
+    "go.mongodb.org/mongo-driver/mongo"
+    "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Estructuras para manejar el webhook de Telegram
 type TelegramUpdate struct {
-	UpdateID int     `json:"update_id"`
-	Message  Message `json:"message"`
+    UpdateID int     `json:"update_id"`
+    Message  Message `json:"message"`
 }
 
 type Message struct {
-	Chat Chat   `json:"chat"`
-	Text string `json:"text"`
+    Chat Chat   `json:"chat"`
+    Text string `json:"text"`
 }
 
 type Chat struct {
-	ID int64 `json:"id"`
+    ID int64 `json:"id"`
 }
 
 // Estructura para el documento de MongoDB
+// Se ha eliminado el campo "_id" para que MongoDB lo genere automáticamente.
 type MessageData struct {
-	ID      string    `bson:"_id"`
-	Message string    `bson:"message"`
-	URL     string    `bson:"url"`
-	Date    time.Time `bson:"date"`
+    Message string    `bson:"message"`
+    URL     string    `bson:"url"`
+    Date    time.Time `bson:"date"`
 }
 
 var (
-	bot        *tgbotapi.BotAPI
-	mongoClient *mongo.Client
+    bot         *tgbotapi.BotAPI
+    mongoClient *mongo.Client
 )
 
 func main() {
-	// Carga las variables de entorno
-	if err := godotenv.Load(); err != nil {
-		log.Println("Advertencia: No se pudo cargar el archivo .env. Asegúrate de que las variables de entorno están configuradas.")
-	}
+    // Carga las variables de entorno
+    if err := godotenv.Load(); err != nil {
+        log.Println("Advertencia: No se pudo cargar el archivo .env. Asegúrate de que las variables de entorno están configuradas.")
+    }
 
-	// Obtén el token del bot de las variables de entorno
-	token := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if token == "" {
-		log.Fatal("Error: La variable de entorno TELEGRAM_BOT_TOKEN no está configurada.")
-	}
+    // Obtén el token del bot de las variables de entorno
+    token := os.Getenv("TELEGRAM_BOT_TOKEN")
+    if token == "" {
+        log.Fatal("Error: La variable de entorno TELEGRAM_BOT_TOKEN no está configurada.")
+    }
 
-	// Obtén la URI de MongoDB del .env
-	mongoURI := os.Getenv("MONGO_URI")
-	if mongoURI == "" {
-		log.Fatal("Error: La variable de entorno MONGO_URI no está configurada.")
-	}
+    // Obtén la URI de MongoDB del .env
+    mongoURI := os.Getenv("MONGO_URI")
+    if mongoURI == "" {
+        log.Fatal("Error: La variable de entorno MONGO_URI no está configurada.")
+    }
 
-	// Inicializa el bot de Telegram
-	var err error
-	bot, err = tgbotapi.NewBotAPI(token)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Bot autorizado en la cuenta %s", bot.Self.UserName)
+    // Inicializa el bot de Telegram
+    var err error
+    bot, err = tgbotapi.NewBotAPI(token)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("Bot autorizado en la cuenta %s", bot.Self.UserName)
 
-	// Inicializa la conexión a MongoDB
-	clientOptions := options.Client().ApplyURI(mongoURI)
-	mongoClient, err = mongo.Connect(context.TODO(), clientOptions)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Verifica la conexión
-	if err = mongoClient.Ping(context.TODO(), nil); err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Conectado exitosamente a MongoDB!")
+    // Inicializa la conexión a MongoDB
+    clientOptions := options.Client().ApplyURI(mongoURI)
+    mongoClient, err = mongo.Connect(context.TODO(), clientOptions)
+    if err != nil {
+        log.Fatal(err)
+    }
+    // Añade la desconexión al final del programa para una buena práctica
+    defer mongoClient.Disconnect(context.TODO())
 
-	router := gin.Default()
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "Hello World from your Go Bot!"})
-	})
-	router.POST("/webhook", handleTelegramWebhook)
+    // Verifica la conexión
+    if err = mongoClient.Ping(context.TODO(), nil); err != nil {
+        log.Fatal(err)
+    }
+    log.Println("Conectado exitosamente a MongoDB!")
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+    // Cambia el modo de Gin a "release" para producción
+    gin.SetMode(gin.ReleaseMode)
+    router := gin.Default()
 
-	log.Printf("Iniciando servidor en el puerto :%s", port)
-	log.Fatal(router.Run(":" + port))
+    router.GET("/", func(c *gin.Context) {
+        c.JSON(http.StatusOK, gin.H{"message": "Hello World from your Go Bot!"})
+    })
+    router.POST("/webhook", handleTelegramWebhook)
+
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
+
+    log.Printf("Iniciando servidor en el puerto :%s", port)
+    log.Fatal(router.Run(":" + port))
 }
 
 // handleTelegramWebhook es el handler para los mensajes de Telegram
@@ -113,8 +118,21 @@ func handleTelegramWebhook(c *gin.Context) {
     url := extractURL(messageText)
 
     if url != "" {
-        // ... (Tu lógica para guardar en MongoDB)
-        // ...
+        // Crea el documento para guardar en MongoDB
+        messageData := MessageData{
+            Message: messageText,
+            URL:     url,
+            Date:    time.Now(),
+        }
+
+        // Define la colección y base de datos
+        collection := mongoClient.Database("tu_nombre_de_base_de_datos").Collection("modelos3d")
+        _, err := collection.InsertOne(context.TODO(), messageData)
+        if err != nil {
+            log.Printf("Error al guardar en MongoDB: %v", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Error interno del servidor"})
+            return
+        }
         
         // Responde al usuario con el mensaje de confirmación
         msg := tgbotapi.NewMessage(update.Message.Chat.ID, "¡Mensaje y enlace para modelo 3D recibidos y guardados con éxito!")
