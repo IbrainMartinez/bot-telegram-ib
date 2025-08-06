@@ -126,7 +126,7 @@ func handleTelegramWebhook(c *gin.Context) {
         }
 
         // Define la colección y base de datos
-        collection := mongoClient.Database("tu_nombre_de_base_de_datos").Collection("modelos3d")
+        collection := mongoClient.Database("test").Collection("urls")
         _, err := collection.InsertOne(context.TODO(), messageData)
         if err != nil {
             log.Printf("Error al guardar en MongoDB: %v", err)
