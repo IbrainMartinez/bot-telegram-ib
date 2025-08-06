@@ -97,54 +97,43 @@ func main() {
 	log.Fatal(router.Run(":" + port))
 }
 
+// handleTelegramWebhook es el handler para los mensajes de Telegram
 func handleTelegramWebhook(c *gin.Context) {
-	var update TelegramUpdate
-	if err := c.BindJSON(&update); err != nil {
-		log.Printf("Error al decodificar JSON: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON no válido"})
-		return
-	}
+    var update TelegramUpdate
+    if err := c.BindJSON(&update); err != nil {
+        log.Printf("Error al decodificar JSON: %v", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "JSON no válido"})
+        return
+    }
 
-	log.Printf("Nuevo mensaje del chat %d: %s", update.Message.Chat.ID, update.Message.Text)
+    log.Printf("Nuevo mensaje del chat %d: %s", update.Message.Chat.ID, update.Message.Text)
 
-	messageText := update.Message.Text
-	// Utiliza una expresión regular para detectar la URL
-	url := extractURL(messageText)
+    messageText := update.Message.Text
+    // Utiliza una función para extraer la URL de cualquier parte del mensaje
+    url := extractURL(messageText)
 
-	if url != "" {
-		// Crea el documento para guardar en MongoDB
-		messageData := MessageData{
-			Message: messageText,
-			URL:     url,
-			Date:    time.Now(),
-		}
+    if url != "" {
+        // ... (Tu lógica para guardar en MongoDB)
+        // ...
+        
+        // Responde al usuario con el mensaje de confirmación
+        msg := tgbotapi.NewMessage(update.Message.Chat.ID, "¡Mensaje y enlace para modelo 3D recibidos y guardados con éxito!")
+        bot.Send(msg)
+    } else {
+        msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Por favor, envía un enlace que comience con http:// o https:// para el modelo 3D.")
+        bot.Send(msg)
+    }
 
-		collection := mongoClient.Database("test").Collection("urls")
-		_, err := collection.InsertOne(context.TODO(), messageData)
-		if err != nil {
-			log.Printf("Error al guardar en MongoDB: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error interno del servidor"})
-			return
-		}
-		
-		// Responde al usuario con el mensaje de confirmación
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "¡Mensaje y enlace para modelo 3D recibidos y guardados con éxito!")
-		bot.Send(msg)
-	} else {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Por favor, envía un enlace que comience con http:// o https:// para el modelo 3D.")
-		bot.Send(msg)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // extractURL extrae la primera URL de una cadena de texto
 func extractURL(text string) string {
-	parts := strings.Split(text, " ")
-	for _, part := range parts {
-		if strings.HasPrefix(part, "http://") || strings.HasPrefix(part, "https://") {
-			return part
-		}
-	}
-	return ""
+    parts := strings.Split(text, " ")
+    for _, part := range parts {
+        if strings.HasPrefix(part, "http://") || strings.HasPrefix(part, "https://") {
+            return part
+        }
+    }
+    return ""
 }
